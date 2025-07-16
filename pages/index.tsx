@@ -1,115 +1,604 @@
-import Image from "next/image";
-import { Geist, Geist_Mono } from "next/font/google";
+import { useState, useRef } from "react";
+import { useFormik, FormikErrors } from "formik";
+import * as Yup from "yup";
+import axios from "axios";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
+interface KycFormValues {
+  number: string;
+  ghanaCardFront: File | null;
+  ghanaCardBack: File | null;
+  momo: {
+    country_code: string;
+    number: string;
+  };
+  selfie: File | null;
+}
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+const KYC_STEPS = [
+  "Ghana Card",
+  "MoMo Verification",
+  "Selfie Upload",
+];
 
-export default function Home() {
+const initialValues: KycFormValues = {
+  number: "",
+  ghanaCardFront: null,
+  ghanaCardBack: null,
+  momo: {
+    country_code: "+233",
+    number: "",
+  },
+  selfie: null,
+};
+
+const validationSchema = [
+  // Step 1: Ghana Card
+  Yup.object({
+    number: Yup.string()
+      .required("Ghana Card Number is required")
+      .matches(/^GHA-\d{9}-\d$/, "Invalid Ghana Card Number format"),
+    ghanaCardFront: Yup.mixed().required("Front image is required"),
+    ghanaCardBack: Yup.mixed().required("Back image is required"),
+  }),
+  // Step 2: MoMo
+  Yup.object({
+    momo: Yup.object({
+      country_code: Yup.string().required("Country code is required"),
+      number: Yup.string()
+        .matches(/^[0-9]{6,15}$/, "Invalid phone number")
+        .required("Phone number is required"),
+    }),
+  }),
+  // Step 3: Selfie
+  Yup.object({
+    selfie: Yup.mixed().required("Selfie is required"),
+  }),
+];
+
+// Color theme
+const PRIMARY = "#a52c3f";
+const PRIMARY_DARK = "#7d1f2e";
+const PRIMARY_LIGHT = "#fbeaec";
+const PRIMARY_RING = "#green";
+const PRIMARY_TEXT = "#a52c3f";
+const SECONDARY = "#fbeaec";
+const BORDER = "#a52c3f";
+const ERROR = "#d32f2f";
+const SUCCESS = "#388e3c";
+
+function FileInputWithPreview({
+  label,
+  name,
+  value,
+  onChange,
+  error,
+  capture,
+}: {
+  label: string;
+  name: string;
+  value: File | null;
+  onChange: (file: File | null) => void;
+  error?: string | false;
+  capture?: 'user' | 'environment';
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] || null;
+    onChange(file);
+    if (file) {
+      setPreview(URL.createObjectURL(file));
+    } else {
+      setPreview(null);
+    }
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-2 w-full">
+      <label className="block font-medium mb-1 w-full text-left" style={{ color: PRIMARY_TEXT }}>{label}</label>
+      <button
+        type="button"
+        className={`w-full flex flex-col items-center justify-center border-2 border-dashed rounded-lg h-32 transition-colors focus:outline-none`}
+        style={{
+          background: SECONDARY,
+          borderColor: error ? ERROR : BORDER,
+          boxShadow: error ? `0 0 0 2px ${ERROR}` : undefined,
+        }}
+        onClick={() => inputRef.current?.click()}
+      >
+        {preview ? (
+          <img
+            src={preview}
+            alt="Preview"
+            className="object-contain h-24 w-auto rounded mb-1"
+          />
+        ) : (
+          <span className="flex flex-col items-center" style={{ color: "#bfa3a8" }}>
+            <svg className="w-8 h-8 mb-1" fill="none" stroke={PRIMARY} strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M7 16V4a1 1 0 011-1h8a1 1 0 011 1v12M7 16l-2 2m0 0l2 2m-2-2h16" />
+            </svg>
+            Click to upload
+          </span>
+        )}
+        <input
+          ref={inputRef}
+          type="file"
+          name={name}
+          accept="image/*"
+          capture={capture}
+          className="hidden"
+          onChange={handleFileChange}
+        />
+      </button>
+      {value && (
+        <button
+          type="button"
+          className="text-xs mt-1"
+          style={{ color: ERROR, textDecoration: "underline" }}
+          onClick={() => {
+            onChange(null);
+            setPreview(null);
+            if (inputRef.current) inputRef.current.value = "";
+          }}
+        >
+          Remove
+        </button>
+      )}
+      {error && <div className="text-xs mt-1 w-full text-left" style={{ color: ERROR }}>{error}</div>}
+    </div>
+  );
+}
+
+export default function KycPage() {
+  const [currentStep, setCurrentStep] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [ghanaCardVerified, setGhanaCardVerified] = useState(false);
+  const [verifyingGhanaCard, setVerifyingGhanaCard] = useState(false);
+  const [ghanaCardError, setGhanaCardError] = useState("");
+
+  const formik = useFormik<KycFormValues>({
+    initialValues,
+    validationSchema: validationSchema[currentStep],
+    validateOnChange: false,
+    validateOnBlur: false,
+    onSubmit: async (values) => {
+      setLoading(true);
+      setError("");
+      setSuccess("");
+      try {
+        const formData = new FormData();
+        formData.append("number", values.number);
+        if (values.ghanaCardFront) formData.append("ghanaCardFront", values.ghanaCardFront);
+        if (values.ghanaCardBack) formData.append("ghanaCardBack", values.ghanaCardBack);
+        formData.append("momo_country_code", values.momo.country_code);
+        formData.append("momo_number", values.momo.number);
+        if (values.selfie) formData.append("selfie", values.selfie);
+        const res = await axios.post("/api/complete-kyc", formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+        setSuccess(res.data.message || "KYC Completed!");
+      } catch (err) {
+        let message = "Failed to complete KYC";
+        if (axios.isAxiosError(err)) {
+          message = err.response?.data?.message || err.message || message;
+        } else if (err instanceof Error) {
+          message = err.message;
+        }
+        setError(message);
+      } finally {
+        setLoading(false);
+      }
+    },
+  });
+
+  const handleNext = async () => {
+    const errors: FormikErrors<KycFormValues> = await formik.validateForm();
+    if (Object.keys(errors).length === 0) {
+      // Ghana Card verification before moving to step 2
+      if (currentStep === 0 && !ghanaCardVerified) {
+        setGhanaCardError("");
+        setVerifyingGhanaCard(true);
+        try {
+          // Replace with your actual endpoint
+          const res = await axios.post("/api/verify-ghana-card", {
+            number: formik.values.number,
+          });
+          if (res.data && res.data.verified) {
+            setGhanaCardVerified(true);
+            setCurrentStep((s) => s + 1);
+          } else {
+            setGhanaCardError(res.data?.message || "Ghana Card verification failed.");
+          }
+        } catch (err) {
+          let message = "Ghana Card verification failed.";
+          if (axios.isAxiosError(err)) {
+            message = err.response?.data?.message || err.message || message;
+          } else if (err instanceof Error) {
+            message = err.message;
+          }
+          setGhanaCardError(message);
+          setGhanaCardVerified(true);
+          setCurrentStep((s) => s + 1);
+        } finally {
+          setVerifyingGhanaCard(false);
+        }
+        return;
+      }
+      setCurrentStep((s) => s + 1);
+    } else {
+      if (currentStep === 0) {
+        formik.setTouched({
+          number: true,
+          ghanaCardFront: true,
+          ghanaCardBack: true,
+          momo: { country_code: false, number: false },
+          selfie: false,
+        });
+      } else if (currentStep === 1) {
+        formik.setTouched({
+          number: false,
+          ghanaCardFront: false,
+          ghanaCardBack: false,
+          momo: { country_code: true, number: true },
+          selfie: false,
+        });
+      } else if (currentStep === 2) {
+        formik.setTouched({
+          number: false,
+          ghanaCardFront: false,
+          ghanaCardBack: false,
+          momo: { country_code: false, number: false },
+          selfie: true,
+        });
+      }
+    }
+  };
+
+  const handleBack = () => {
+    setCurrentStep((s) => Math.max(0, s - 1));
+  };
+
   return (
     <div
-      className={`${geistSans.className} ${geistMono.className} font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20`}
+      className="min-h-screen flex items-center justify-center px-0 py-0  md:py-8 md:px-2"
+      style={{
+        background: `linear-gradient(135deg, #fff6f7 0%, #fbeaec 100%)`,
+      }}
     >
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              pages/index.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+      <div
+        className="w-full max-w-lg max-sm:h-full bg-white shadow-none rounded-none md:rounded-2xl p-6 sm:p-10 pt-3 lg:pt-4 border-0 md:border"
+        style={{
+          borderColor: BORDER,
+          // boxShadow: `0 2px 16px 0 rgba(165,44,63,0.08)`,
+        }}
+      >
+        <img src="/logoform.jpg" alt="logo" className="w-auto h-10 mb-6 text-center mx-auto" />
+        <h1
+          className="text-2xl font-bold text-center mb-2"
+          style={{ color: PRIMARY_TEXT }}
+        >
+          Complete KYC Verification
+        </h1>
+        <p className="text-center mb-6 text-sm" style={{ color: "#751e2b" }}>
+          Verify your identity to secure your account and authorize transactions.
+        </p>
+        {/* Stepper with progress bar */}
+        <div className="mb-5">
+          <div className="flex items-center justify-between mb-2">
+            {KYC_STEPS.map((title, idx) => (
+              <div key={title} className="flex-1 flex flex-col items-center relative">
+                <div
+                  className="w-8 h-8 rounded-full flex items-center justify-center mb-1 text-white text-base font-semibold transition-all duration-200 shadow"
+                  style={{
+                    background:
+                      idx === currentStep
+                        ? PRIMARY
+                        : idx < currentStep
+                        ? SUCCESS
+                        : "#e5e5e5",
+                    transform: idx === currentStep ? "scale(1.1)" : undefined,
+                  }}
+                >
+                  {idx < currentStep ? (
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="#fff"
+                      strokeWidth={2}
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                  ) : (
+                    idx + 1
+                  )}
+                </div>
+                <span
+                  className="text-xs text-center font-medium"
+                  style={{
+                    color:
+                      idx === currentStep
+                        ? PRIMARY
+                        : idx < currentStep
+                        ? SUCCESS
+                        : "#bfa3a8",
+                  }}
+                >
+                  {title}
+                </span>
+                {idx < KYC_STEPS.length - 1 && (
+                  <div className="hidden top-4 right-0 w-full h-1 z-0">
+                    <div
+                      className="h-1 rounded transition-all duration-300"
+                      style={{
+                        background:
+                          idx < currentStep
+                            ? `linear-gradient(to right, ${PRIMARY}, ${SUCCESS})`
+                            : "#f3e6e8",
+                        width: idx < currentStep ? "100%" : "0",
+                        transition: "width 0.3s",
+                      }}
+                    ></div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="w-full h-1 rounded mt-2 overflow-hidden" style={{ background: "#f3e6e8" }}>
+            <div
+              className="h-1 transition-all duration-300"
+              style={{
+                background: `linear-gradient(to right, ${PRIMARY}, ${SUCCESS})`,
+                width: `${((currentStep + 1) / KYC_STEPS.length) * 100}%`,
+              }}
+            ></div>
+          </div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
+        <form
+          onSubmit={formik.handleSubmit}
+          encType="multipart/form-data"
+          className="space-y-4"
         >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+          {currentStep === 0 && (
+            <>
+              <div className="mb-4">
+                <h2
+                  className="text-lg font-semibold mb-4 text-center"
+                  style={{ color: PRIMARY_TEXT }}
+                >
+                  Ghana Card Details
+                </h2>
+                <label className="block font-medium mb-1" style={{ color: PRIMARY_TEXT }}>
+                  Ghana Card Number
+                </label>
+                <input
+                  type="text"
+                  name="number"
+                  className="w-full border rounded px-3 py-2 transition"
+                  style={{
+                    borderColor: formik.touched.number && formik.errors.number ? ERROR : BORDER,
+                    outline: "none",
+                    boxShadow:
+                      formik.touched.number && formik.errors.number
+                        ? `0 0 0 2px ${ERROR}33`
+                        : `0 0 0 2px ${PRIMARY_RING}22`,
+                  }}
+                  placeholder="GHA-000000000-0"
+                  value={formik.values.number}
+                  onChange={e => {
+                    formik.handleChange(e);
+                    setGhanaCardVerified(false); // Reset verification if number changes
+                    setGhanaCardError("");
+                  }}
+                />
+                {formik.touched.number && formik.errors.number && (
+                  <div className="text-xs mt-1" style={{ color: ERROR }}>
+                    {formik.errors.number}
+                  </div>
+                )}
+                {ghanaCardError && (
+                  <div className="text-xs mt-1" style={{ color: ERROR }}>
+                    {ghanaCardError}
+                  </div>
+                )}
+                {ghanaCardVerified && (
+                  <div className="text-xs mt-1" style={{ color: SUCCESS }}>
+                    Ghana Card verified!
+                  </div>
+                )}
+              </div>
+              <div className="flex flex-col sm:flex-row gap-4">
+                <FileInputWithPreview
+                  label="Front Image"
+                  name="ghanaCardFront"
+                  value={formik.values.ghanaCardFront}
+                  onChange={(file) => formik.setFieldValue("ghanaCardFront", file)}
+                  error={formik.touched.ghanaCardFront && formik.errors.ghanaCardFront}
+                  capture="environment"
+                />
+                <FileInputWithPreview
+                  label="Back Image"
+                  name="ghanaCardBack"
+                  value={formik.values.ghanaCardBack}
+                  onChange={(file) => formik.setFieldValue("ghanaCardBack", file)}
+                  error={formik.touched.ghanaCardBack && formik.errors.ghanaCardBack}
+                  capture="environment"
+                />
+              </div>
+            </>
+          )}
+          {currentStep === 1 && (
+            <>
+              <div className="mb-4">
+                <h2
+                  className="text-lg font-semibold mb-2"
+                  style={{ color: PRIMARY_TEXT }}
+                >
+                  Mobile Money Verification
+                </h2>
+                <label className="block font-medium mb-1" style={{ color: PRIMARY_TEXT }}>
+                  Mobile Money Number
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    name="momo.country_code"
+                    className="w-20 border rounded px-2 py-2 transition"
+                    style={{
+                      borderColor: BORDER,
+                      color: PRIMARY_TEXT,
+                      background: "#fff",
+                    }}
+                    value={formik.values.momo.country_code}
+                    onChange={formik.handleChange}
+                    readOnly
+                  />
+                  <input
+                    type="text"
+                    name="momo.number"
+                    className="flex-1 border rounded px-3 py-2 transition"
+                    style={{
+                      borderColor:
+                        formik.touched.momo?.number && formik.errors.momo?.number
+                          ? ERROR
+                          : BORDER,
+                      outline: "none",
+                      boxShadow:
+                        formik.touched.momo?.number && formik.errors.momo?.number
+                          ? `0 0 0 2px ${ERROR}33`
+                          : `0 0 0 2px ${PRIMARY_RING}22`,
+                    }}
+                    placeholder="Enter number"
+                    value={formik.values.momo.number}
+                    onChange={formik.handleChange}
+                  />
+                </div>
+                {formik.touched.momo?.number && formik.errors.momo?.number && (
+                  <div className="text-xs mt-1" style={{ color: ERROR }}>
+                    {formik.errors.momo.number}
+                  </div>
+                )}
+              </div>
+              <div
+                className="rounded p-3 text-xs mt-2"
+                style={{
+                  background: PRIMARY_LIGHT,
+                  border: `1px solid ${PRIMARY}`,
+                  color: PRIMARY,
+                }}
+              >
+                The name on your Mobile Money account must exactly match the name on your Ghana Card.
+              </div>
+            </>
+          )}
+          {currentStep === 2 && (
+            <>
+              <div className="mb-4">
+                <h2
+                  className="text-lg font-semibold mb-2"
+                  style={{ color: PRIMARY_TEXT }}
+                >
+                  Upload a Selfie
+                </h2>
+                <FileInputWithPreview
+                  label="Selfie"
+                  name="selfie"
+                  value={formik.values.selfie}
+                  onChange={(file) => formik.setFieldValue("selfie", file)}
+                  error={formik.touched.selfie && formik.errors.selfie}
+                  capture="user"
+                />
+              </div>
+              <div
+                className="rounded p-3 text-xs mt-2"
+                style={{
+                  background: PRIMARY_LIGHT,
+                  border: `1px solid ${PRIMARY}`,
+                  color: PRIMARY,
+                }}
+              >
+                Please ensure your face is clearly visible and well-lit. On mobile, your camera will open automatically.
+              </div>
+            </>
+          )}
+          {error && (
+            <div className="text-sm text-center" style={{ color: ERROR }}>
+              {error}
+            </div>
+          )}
+          {success && (
+            <div className="text-sm text-center" style={{ color: SUCCESS }}>
+              {success}
+            </div>
+          )}
+          <div className="flex justify-between mt-6 gap-2">
+            {currentStep > 0 && (
+              <button
+                type="button"
+                className="px-4 py-2 rounded border transition"
+                style={{
+                  background: "#fff",
+                  color: PRIMARY_TEXT,
+                  borderColor: BORDER,
+                  fontWeight: 500,
+                }}
+                onClick={handleBack}
+                disabled={loading}
+              >
+                Back
+              </button>
+            )}
+            {currentStep < KYC_STEPS.length - 1 && (
+              <button
+                type="button"
+                className="px-4 py-2 rounded font-semibold shadow flex items-center justify-center min-w-[120px] transition"
+                style={{
+                  background: PRIMARY,
+                  color: "#fff",
+                  border: "none",
+                  boxShadow: `0 2px 8px 0 ${PRIMARY}22`,
+                }}
+                onClick={handleNext}
+                disabled={loading || verifyingGhanaCard}
+              >
+                {verifyingGhanaCard ? (
+                  <>
+                    <svg className="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="#fff" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="#fff" d="M4 12a8 8 0 018-8v8z"></path>
+                    </svg>
+                    Verifying...
+                  </>
+                ) : (
+                  "Continue"
+                )}
+              </button>
+            )}
+            {currentStep === KYC_STEPS.length - 1 && (
+              <button
+                type="submit"
+                className="px-4 py-2 rounded font-semibold shadow transition"
+                style={{
+                  background: PRIMARY_DARK,
+                  color: "#fff",
+                  border: "none",
+                  boxShadow: `0 2px 8px 0 ${PRIMARY_DARK}22`,
+                }}
+                disabled={loading}
+              >
+                {loading ? "Submitting..." : "Complete Verification"}
+              </button>
+            )}
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
