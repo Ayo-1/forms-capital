@@ -527,7 +527,7 @@ export default function KycPage() {
                 <input
                   type="text"
                   name="number"
-                  className="w-full border rounded px-3 py-2 transition"
+                  className="w-full border rounded px-3 py-2 transition text-dark"
                   style={{
                     borderColor: formik.touched.number && formik.errors.number ? ERROR : BORDER_GREY,
                     outline: "none",
@@ -596,7 +596,7 @@ export default function KycPage() {
                   <input
                     type="text"
                     name="momo.country_code"
-                    className="w-20 border rounded px-2 py-2 transition"
+                    className="w-20 border rounded px-2 py-2 transition text-dark"
                     style={{
                       borderColor: BORDER_GREY,
                       color: TEXT_COLOR,
@@ -609,7 +609,7 @@ export default function KycPage() {
                   <input
                     type="text"
                     name="momo.number"
-                    className="flex-1 border rounded px-3 py-2 transition"
+                    className="flex-1 border rounded px-3 py-2 transition text-dark"
                     style={{
                       borderColor:
                         formik.touched.momo?.number && formik.errors.momo?.number
