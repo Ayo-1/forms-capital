@@ -65,6 +65,8 @@ const SECONDARY = "#fbeaec";
 const BORDER = "#a52c3f";
 const ERROR = "#d32f2f";
 const SUCCESS = "#388e3c";
+const TEXT_COLOR = "#313131";
+const BORDER_GREY = "#494848";
 
 function FileInputWithPreview({
   label,
@@ -96,13 +98,13 @@ function FileInputWithPreview({
 
   return (
     <div className="flex flex-col items-center gap-2 w-full">
-      <label className="block font-medium mb-1 w-full text-left" style={{ color: PRIMARY_TEXT }}>{label}</label>
+      <label className="block font-medium mb-1 w-full text-left text-gray-600">{label}</label>
       <button
         type="button"
         className={`w-full flex flex-col items-center justify-center border-2 border-dashed rounded-lg h-32 transition-colors focus:outline-none`}
         style={{
-          background: SECONDARY,
-          borderColor: error ? ERROR : BORDER,
+          background: preview ? "transparent" : SECONDARY,
+          borderColor: error ? ERROR : preview ? SUCCESS : BORDER,
           boxShadow: error ? `0 0 0 2px ${ERROR}` : undefined,
         }}
         onClick={() => inputRef.current?.click()}
@@ -278,11 +280,11 @@ export default function KycPage() {
         <img src="/logoform.jpg" alt="logo" className="w-auto h-10 mb-6 text-center mx-auto" />
         <h1
           className="text-2xl font-bold text-center mb-2"
-          style={{ color: PRIMARY_TEXT }}
+          style={{ color: TEXT_COLOR }}
         >
           Complete KYC Verification
         </h1>
-        <p className="text-center mb-6 text-sm" style={{ color: "#751e2b" }}>
+        <p className="text-center mb-6 text-sm text-gray-600">
           Verify your identity to secure your account and authorize transactions.
         </p>
         {/* Stepper with progress bar */}
@@ -371,11 +373,11 @@ export default function KycPage() {
               <div className="mb-4">
                 <h2
                   className="text-lg font-semibold mb-4 text-center"
-                  style={{ color: PRIMARY_TEXT }}
+                  style={{ color: TEXT_COLOR }}
                 >
                   Ghana Card Details
                 </h2>
-                <label className="block font-medium mb-1" style={{ color: PRIMARY_TEXT }}>
+                <label className="block font-medium mb-1 text-gray-600">
                   Ghana Card Number
                 </label>
                 <input
@@ -383,7 +385,7 @@ export default function KycPage() {
                   name="number"
                   className="w-full border rounded px-3 py-2 transition"
                   style={{
-                    borderColor: formik.touched.number && formik.errors.number ? ERROR : BORDER,
+                    borderColor: formik.touched.number && formik.errors.number ? ERROR : BORDER_GREY,
                     outline: "none",
                     boxShadow:
                       formik.touched.number && formik.errors.number
@@ -439,11 +441,11 @@ export default function KycPage() {
               <div className="mb-4">
                 <h2
                   className="text-lg font-semibold mb-2"
-                  style={{ color: PRIMARY_TEXT }}
+                  style={{ color: TEXT_COLOR }}
                 >
                   Mobile Money Verification
                 </h2>
-                <label className="block font-medium mb-1" style={{ color: PRIMARY_TEXT }}>
+                <label className="block font-medium mb-1 text-gray-600">
                   Mobile Money Number
                 </label>
                 <div className="flex gap-2">
@@ -452,8 +454,8 @@ export default function KycPage() {
                     name="momo.country_code"
                     className="w-20 border rounded px-2 py-2 transition"
                     style={{
-                      borderColor: BORDER,
-                      color: PRIMARY_TEXT,
+                      borderColor: BORDER_GREY,
+                      color: TEXT_COLOR,
                       background: "#fff",
                     }}
                     value={formik.values.momo.country_code}
@@ -468,7 +470,7 @@ export default function KycPage() {
                       borderColor:
                         formik.touched.momo?.number && formik.errors.momo?.number
                           ? ERROR
-                          : BORDER,
+                          : BORDER_GREY,
                       outline: "none",
                       boxShadow:
                         formik.touched.momo?.number && formik.errors.momo?.number
@@ -503,7 +505,7 @@ export default function KycPage() {
               <div className="mb-4">
                 <h2
                   className="text-lg font-semibold mb-2"
-                  style={{ color: PRIMARY_TEXT }}
+                  style={{ color: TEXT_COLOR }}
                 >
                   Upload a Selfie
                 </h2>
@@ -558,7 +560,7 @@ export default function KycPage() {
             {currentStep < KYC_STEPS.length - 1 && (
               <button
                 type="button"
-                className="px-4 py-2 rounded font-semibold shadow flex items-center justify-center min-w-[120px] transition"
+                className="px-4 py-2 rounded w-full font-semibold shadow flex items-center justify-center min-w-[120px] transition"
                 style={{
                   background: PRIMARY,
                   color: "#fff",
@@ -584,7 +586,7 @@ export default function KycPage() {
             {currentStep === KYC_STEPS.length - 1 && (
               <button
                 type="submit"
-                className="px-4 py-2 rounded font-semibold shadow transition"
+                className="px-4 py-2 w-full rounded font-semibold shadow transition"
                 style={{
                   background: PRIMARY_DARK,
                   color: "#fff",
