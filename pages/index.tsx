@@ -3,6 +3,8 @@ import { useFormik, FormikErrors } from "formik";
 import * as Yup from "yup";
 import axios from "axios";
 import { toast } from "react-hot-toast";
+import imageCompression from "browser-image-compression";
+
 
 interface KycFormValues {
   number: string;
@@ -106,9 +108,26 @@ function FileInputWithPreview({
   const inputRef = useRef<HTMLInputElement>(null);
   const preview = useFilePreview(value);
 
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] || null;
-    onChange(file);
+    if (file && name === "selfie") {
+      // Only compress/crop selfie
+      const options = {
+        maxWidthOrHeight: 640,
+        minWidth: 480,
+        minHeight: 640,
+        maxSizeMB: 0.5,
+        useWebWorker: true,
+      };
+      try {
+        const compressedFile = await imageCompression(file, options);
+        onChange(compressedFile);
+      } catch (err) {
+        onChange(file); // fallback
+      }
+    } else {
+      onChange(file);
+    }
   }
 
   return (
